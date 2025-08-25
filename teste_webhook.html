@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Teste Webhook - Assistente Financeiro</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background: #f5f5f5; }
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px; }
+        .test-area { background: #f0f8ff; padding: 20px; border-radius: 5px; margin: 20px 0; }
+        .result { background: #e8f5e8; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .error { background: #ffe8e8; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        button { background: #007cba; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #005a8b; }
+        input, textarea { width: 100%; padding: 8px; margin: 5px 0; border: 1px solid #ddd; border-radius: 3px; }
+        .log { font-family: monospace; background: #f0f0f0; padding: 10px; border-radius: 3px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Teste Webhook - Assistente Financeiro</h1>
+        
+        <div class="test-area">
+            <h3>📱 Simular Mensagem WhatsApp</h3>
+            
+            <label>Número do WhatsApp:</label>
+            <input type="text" id="phoneNumber" value="whatsapp:+5511999999999" />
+            
+            <label>Mensagem:</label>
+            <textarea id="messageBody" rows="3" placeholder="Ex: Gastei 50 reais no mercado">gastei 25 reais no almoço</textarea>
+            
+            <label>Nome do Perfil:</label>
+            <input type="text" id="profileName" value="Teste Local" />
+            
+            <button onclick="testarWebhook()">📤 Enviar para Webhook</button>
+            <button onclick="testarStatus()">📊 Testar Status</button>
+            <button onclick="limparLog()">🗑️ Limpar Log</button>
+        </div>
+        
+        <div id="resultados"></div>
+    </div>
+
+    <script>
+        async function testarWebhook() {
+            const phoneNumber = document.getElementById('phoneNumber').value;
+            const messageBody = document.getElementById('messageBody').value;
+            const profileName = document.getElementById('profileName').value;
+            
+            const dados = new FormData();
+            dados.append('From', phoneNumber);
+            dados.append('Body', messageBody);
+            dados.append('MessageType', 'text');
+            dados.append('ProfileName', profileName);
+            
+            log(`📤 Enviando webhook: "${messageBody}" de ${phoneNumber}`);
+            
+            try {
+                const response = await fetch('/webhook', {
+                    method: 'POST',
+                    body: dados
+                });
+                
+                const resposta = await response.text();
+                
+                if (response.ok) {
+                    showResult(`✅ Webhook funcionou!
+Status: ${response.status}
+Resposta: ${resposta}`, 'result');
+                } else {
+                    showResult(`❌ Erro no webhook:
+Status: ${response.status}
+Resposta: ${resposta}`, 'error');
+                }
+            } catch (error) {
+                showResult(`❌ Erro de conexão: ${error.message}`, 'error');
+            }
+        }
+        
+        async function testarStatus() {
+            log('📊 Testando endpoint de status...');
+            
+            try {
+                const response = await fetch('/status');
+                const dados = await response.json();
+                
+                showResult(`✅ Status OK:
+${JSON.stringify(dados, null, 2)}`, 'result');
+            } catch (error) {
+                showResult(`❌ Erro no status: ${error.message}`, 'error');
+            }
+        }
+        
+        function showResult(texto, tipo) {
+            const div = document.createElement('div');
+            div.className = tipo;
+            div.innerHTML = `<pre>${texto}</pre>`;
+            document.getElementById('resultados').appendChild(div);
+        }
+        
+        function log(mensagem) {
+            const div = document.createElement('div');
+            div.className = 'log';
+            div.innerHTML = `${new Date().toLocaleTimeString()} - ${mensagem}`;
+            document.getElementById('resultados').appendChild(div);
+        }
+        
+        function limparLog() {
+            document.getElementById('resultados').innerHTML = '';
+        }
+        
+        // Comandos de exemplo
+        const comandosExemplo = [
+            "gastei 50 reais no mercado",
+            "recebi 1000 de salário",
+            "paguei 80 de gasolina",
+            "mostre meus gastos de hoje",
+            "qual meu saldo?",
+            "relatório da semana"
+        ];
+        
+        // Adicionar botões de exemplo
+        window.onload = function() {
+            const container = document.querySelector('.test-area');
+            const exemplosDiv = document.createElement('div');
+            exemplosDiv.innerHTML = '<h4>💡 Comandos de Exemplo:</h4>';
+            
+            comandosExemplo.forEach(comando => {
+                const btn = document.createElement('button');
+                btn.textContent = comando;
+                btn.style.fontSize = '12px';
+                btn.style.margin = '2px';
+                btn.onclick = () => {
+                    document.getElementById('messageBody').value = comando;
+                };
+                exemplosDiv.appendChild(btn);
+            });
+            
+            container.appendChild(exemplosDiv);
+        };
+    </script>
+</body>
+</html>

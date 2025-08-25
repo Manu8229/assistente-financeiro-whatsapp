@@ -1,0 +1,78 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables
+.env
+.env.local
+.env.production
+
+# Databases (local development)
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Arquivos temporários
+temp/
+tmp/
+
+# Chaves SSH locais
+localhost_key*
+*.key
+*.pem
+
+# Arquivos específicos do projeto local
+teste_*.py
+diagnostico_*.py
+configurar_*.py
+servidor_*.py
+monitor_*.py
+*.bat
+*.ps1
+AJUDA_*.md
+CONFIGURACAO_*.md
+DIAGNOSTICO_*.md
+MELHORIAS_*.md
+SOLUCAO_*.md
+VERIFICACAO_*.md
+RELATORIO_*.md
+Prompt*.txt
