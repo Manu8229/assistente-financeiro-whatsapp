@@ -581,10 +581,564 @@ def home():
         </ul>
         
         <p><em>Deploy otimizado para Render.com</em></p>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="/inspecao" style="background: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; display: inline-block;">
+                🔍 Sistema de Inspeção Visual
+            </a>
+        </div>
     </div>
 </body>
 </html>
     """
+
+@app.route('/inspecao')
+def inspecao_visual():
+    """Sistema de Inspeção Visual - Dashboard completo"""
+    
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        
+        # Obter parâmetros de filtro
+        usuario_filtro = request.args.get('usuario', '')
+        data_inicio = request.args.get('data_inicio', '')
+        data_fim = request.args.get('data_fim', '')
+        categoria_filtro = request.args.get('categoria', '')
+        tipo_filtro = request.args.get('tipo', '')
+        
+        # Construir query base
+        where_clauses = []
+        params = []
+        
+        if usuario_filtro:
+            where_clauses.append("usuario LIKE ?")
+            params.append(f"%{usuario_filtro}%")
+        
+        if data_inicio:
+            where_clauses.append("date(data_efetiva) >= ?")
+            params.append(data_inicio)
+        
+        if data_fim:
+            where_clauses.append("date(data_efetiva) <= ?")
+            params.append(data_fim)
+        
+        if categoria_filtro:
+            where_clauses.append("categoria = ?")
+            params.append(categoria_filtro)
+        
+        if tipo_filtro:
+            where_clauses.append("tipo = ?")
+            params.append(tipo_filtro)
+        
+        where_sql = " AND ".join(where_clauses) if where_clauses else "1=1"
+        
+        # Estatísticas gerais
+        cursor.execute(f"""
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as total_receitas,
+                SUM(CASE WHEN tipo = 'gasto' THEN valor ELSE 0 END) as total_gastos,
+                COUNT(DISTINCT usuario) as total_usuarios,
+                COUNT(DISTINCT categoria) as total_categorias
+            FROM lancamentos
+            WHERE {where_sql}
+        """, params)
+        stats = cursor.fetchone()
+        
+        total_lancamentos = stats[0] or 0
+        total_receitas = stats[1] or 0
+        total_gastos = stats[2] or 0
+        total_usuarios = stats[3] or 0
+        total_categorias = stats[4] or 0
+        saldo = total_receitas - total_gastos
+        
+        # Gastos por categoria
+        cursor.execute(f"""
+            SELECT categoria, SUM(valor) as total, COUNT(*) as quantidade
+            FROM lancamentos
+            WHERE tipo = 'gasto' AND {where_sql}
+            GROUP BY categoria
+            ORDER BY total DESC
+        """, params)
+        gastos_categoria = cursor.fetchall()
+        
+        # Receitas por categoria
+        cursor.execute(f"""
+            SELECT categoria, SUM(valor) as total, COUNT(*) as quantidade
+            FROM lancamentos
+            WHERE tipo = 'receita' AND {where_sql}
+            GROUP BY categoria
+            ORDER BY total DESC
+        """, params)
+        receitas_categoria = cursor.fetchall()
+        
+        # Lista de todas as categorias para o filtro
+        cursor.execute("SELECT DISTINCT categoria FROM lancamentos ORDER BY categoria")
+        todas_categorias = [row[0] for row in cursor.fetchall()]
+        
+        # Últimos lançamentos
+        cursor.execute(f"""
+            SELECT id, usuario, tipo, valor, descricao, categoria, 
+                   date(data_efetiva), datetime(data_lancamento), origem
+            FROM lancamentos
+            WHERE {where_sql}
+            ORDER BY data_lancamento DESC
+            LIMIT 50
+        """, params)
+        lancamentos = cursor.fetchall()
+        
+        # Evolução diária
+        cursor.execute(f"""
+            SELECT date(data_efetiva) as data, 
+                   SUM(CASE WHEN tipo = 'receita' THEN valor ELSE 0 END) as receitas,
+                   SUM(CASE WHEN tipo = 'gasto' THEN valor ELSE 0 END) as gastos
+            FROM lancamentos
+            WHERE {where_sql}
+            GROUP BY date(data_efetiva)
+            ORDER BY date(data_efetiva) DESC
+            LIMIT 30
+        """, params)
+        evolucao_diaria = cursor.fetchall()
+        
+        conn.close()
+        
+        # Gerar HTML do dashboard
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Sistema de Inspeção Visual - Assistente Financeiro</title>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }}
+        .container {{ max-width: 1400px; margin: 0 auto; }}
+        .header {{ 
+            background: white; 
+            padding: 30px; 
+            border-radius: 15px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }}
+        .header h1 {{ 
+            color: #333; 
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        .header p {{ color: #666; }}
+        
+        .stats-grid {{ 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+            gap: 20px; 
+            margin-bottom: 20px;
+        }}
+        .stat-card {{ 
+            background: white; 
+            padding: 25px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }}
+        .stat-card:hover {{ 
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+        }}
+        .stat-card .label {{ 
+            color: #666; 
+            font-size: 14px; 
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .stat-card .value {{ 
+            font-size: 32px; 
+            font-weight: bold; 
+            color: #333;
+        }}
+        .stat-card .subtext {{ 
+            color: #999; 
+            font-size: 12px; 
+            margin-top: 5px;
+        }}
+        .stat-card.receita .value {{ color: #28a745; }}
+        .stat-card.gasto .value {{ color: #dc3545; }}
+        .stat-card.saldo .value {{ color: {('#28a745' if saldo >= 0 else '#dc3545')}; }}
+        
+        .filters {{ 
+            background: white; 
+            padding: 25px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }}
+        .filters h3 {{ 
+            margin-bottom: 15px; 
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .filter-grid {{ 
+            display: grid; 
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px;
+            margin-bottom: 15px;
+        }}
+        .filter-group {{ display: flex; flex-direction: column; }}
+        .filter-group label {{ 
+            font-size: 13px; 
+            color: #666; 
+            margin-bottom: 5px;
+            font-weight: 500;
+        }}
+        .filter-group input, .filter-group select {{ 
+            padding: 10px; 
+            border: 2px solid #e0e0e0; 
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }}
+        .filter-group input:focus, .filter-group select:focus {{ 
+            outline: none;
+            border-color: #667eea;
+        }}
+        .btn {{ 
+            padding: 12px 24px; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .btn-primary {{ 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white;
+        }}
+        .btn-primary:hover {{ 
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }}
+        .btn-secondary {{ 
+            background: #6c757d; 
+            color: white;
+        }}
+        .btn-secondary:hover {{ 
+            background: #5a6268;
+        }}
+        
+        .content-grid {{ 
+            display: grid; 
+            grid-template-columns: 2fr 1fr; 
+            gap: 20px;
+            margin-bottom: 20px;
+        }}
+        
+        @media (max-width: 1024px) {{
+            .content-grid {{ grid-template-columns: 1fr; }}
+        }}
+        
+        .panel {{ 
+            background: white; 
+            padding: 25px; 
+            border-radius: 15px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }}
+        .panel h3 {{ 
+            margin-bottom: 20px; 
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #f0f0f0;
+        }}
+        
+        .transactions-table {{ 
+            width: 100%; 
+            border-collapse: collapse;
+            margin-top: 15px;
+        }}
+        .transactions-table th {{ 
+            background: #f8f9fa; 
+            padding: 12px; 
+            text-align: left; 
+            font-size: 13px;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 2px solid #e0e0e0;
+        }}
+        .transactions-table td {{ 
+            padding: 12px; 
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }}
+        .transactions-table tr:hover {{ 
+            background: #f8f9fa;
+        }}
+        
+        .badge {{ 
+            display: inline-block; 
+            padding: 4px 12px; 
+            border-radius: 20px; 
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        .badge-receita {{ background: #d4edda; color: #155724; }}
+        .badge-gasto {{ background: #f8d7da; color: #721c24; }}
+        
+        .category-item {{ 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.3s;
+        }}
+        .category-item:hover {{ 
+            background: #f8f9fa;
+        }}
+        .category-item:last-child {{ 
+            border-bottom: none;
+        }}
+        .category-name {{ 
+            font-weight: 500; 
+            color: #333;
+        }}
+        .category-value {{ 
+            font-weight: 600; 
+            color: #dc3545;
+        }}
+        .category-count {{ 
+            font-size: 12px; 
+            color: #999;
+            margin-left: 10px;
+        }}
+        
+        .timeline {{ margin-top: 15px; }}
+        .timeline-item {{ 
+            padding: 12px;
+            border-left: 3px solid #e0e0e0;
+            margin-bottom: 10px;
+            padding-left: 15px;
+        }}
+        .timeline-item.receita {{ border-left-color: #28a745; }}
+        .timeline-item.gasto {{ border-left-color: #dc3545; }}
+        .timeline-date {{ 
+            font-size: 12px; 
+            color: #999;
+            margin-bottom: 5px;
+        }}
+        .timeline-values {{ 
+            display: flex; 
+            gap: 15px;
+            font-size: 14px;
+        }}
+        .timeline-values span {{ 
+            font-weight: 600;
+        }}
+        .timeline-values .receita {{ color: #28a745; }}
+        .timeline-values .gasto {{ color: #dc3545; }}
+        
+        .empty-state {{ 
+            text-align: center; 
+            padding: 40px;
+            color: #999;
+        }}
+        .empty-state svg {{ 
+            width: 64px; 
+            height: 64px; 
+            margin-bottom: 15px;
+            opacity: 0.3;
+        }}
+        
+        .back-link {{ 
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            margin-top: 20px;
+            transition: all 0.3s;
+        }}
+        .back-link:hover {{ 
+            gap: 12px;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>
+                🔍 Sistema de Inspeção Visual
+            </h1>
+            <p>Dashboard completo para análise de dados financeiros em tempo real</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="label">📊 Total de Lançamentos</div>
+                <div class="value">{total_lancamentos}</div>
+                <div class="subtext">{total_usuarios} usuário(s) · {total_categorias} categoria(s)</div>
+            </div>
+            <div class="stat-card receita">
+                <div class="label">💰 Receitas Totais</div>
+                <div class="value">R$ {total_receitas:,.2f}</div>
+                <div class="subtext">{sum(1 for l in lancamentos if l[2] == 'receita')} lançamento(s)</div>
+            </div>
+            <div class="stat-card gasto">
+                <div class="label">💸 Gastos Totais</div>
+                <div class="value">R$ {total_gastos:,.2f}</div>
+                <div class="subtext">{sum(1 for l in lancamentos if l[2] == 'gasto')} lançamento(s)</div>
+            </div>
+            <div class="stat-card saldo">
+                <div class="label">💵 Saldo Líquido</div>
+                <div class="value">R$ {saldo:,.2f}</div>
+                <div class="subtext">{'Positivo ✅' if saldo >= 0 else 'Negativo ⚠️'}</div>
+            </div>
+        </div>
+        
+        <div class="filters">
+            <h3>🎯 Filtros de Busca</h3>
+            <form method="GET" action="/inspecao">
+                <div class="filter-grid">
+                    <div class="filter-group">
+                        <label>Usuário (telefone)</label>
+                        <input type="text" name="usuario" value="{usuario_filtro}" placeholder="Ex: +5511999999999">
+                    </div>
+                    <div class="filter-group">
+                        <label>Data Início</label>
+                        <input type="date" name="data_inicio" value="{data_inicio}">
+                    </div>
+                    <div class="filter-group">
+                        <label>Data Fim</label>
+                        <input type="date" name="data_fim" value="{data_fim}">
+                    </div>
+                    <div class="filter-group">
+                        <label>Categoria</label>
+                        <select name="categoria">
+                            <option value="">Todas as categorias</option>
+                            {''.join([f'<option value="{cat}" {"selected" if cat == categoria_filtro else ""}>{cat}</option>' for cat in todas_categorias])}
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Tipo</label>
+                        <select name="tipo">
+                            <option value="">Todos os tipos</option>
+                            <option value="receita" {"selected" if tipo_filtro == "receita" else ""}>Receita</option>
+                            <option value="gasto" {"selected" if tipo_filtro == "gasto" else ""}>Gasto</option>
+                        </select>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; display: flex; gap: 10px;">
+                    <button type="submit" class="btn btn-primary">🔍 Aplicar Filtros</button>
+                    <a href="/inspecao" class="btn btn-secondary">🔄 Limpar Filtros</a>
+                </div>
+            </form>
+        </div>
+        
+        <div class="content-grid">
+            <div class="panel">
+                <h3>📋 Lançamentos Recentes (últimos 50)</h3>
+                {f'''
+                <table class="transactions-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Data</th>
+                            <th>Tipo</th>
+                            <th>Valor</th>
+                            <th>Descrição</th>
+                            <th>Categoria</th>
+                            <th>Usuário</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {''.join([f"""
+                        <tr>
+                            <td>#{l[0]}</td>
+                            <td>{datetime.strptime(l[6], '%Y-%m-%d').strftime('%d/%m/%Y')}</td>
+                            <td><span class="badge badge-{l[2]}">{l[2].title()}</span></td>
+                            <td style="font-weight: 600; color: {'#28a745' if l[2] == 'receita' else '#dc3545'}">R$ {l[3]:,.2f}</td>
+                            <td>{l[4]}</td>
+                            <td>{l[5]}</td>
+                            <td style="font-size: 11px; color: #999;">{l[1][-15:]}</td>
+                        </tr>
+                        """ for l in lancamentos])}
+                    </tbody>
+                </table>
+                ''' if lancamentos else '<div class="empty-state">📭<br>Nenhum lançamento encontrado com os filtros aplicados</div>'}
+            </div>
+            
+            <div>
+                <div class="panel" style="margin-bottom: 20px;">
+                    <h3>🏷️ Gastos por Categoria</h3>
+                    {f'''
+                    {''.join([f"""
+                    <div class="category-item">
+                        <span class="category-name">{cat[0]}</span>
+                        <div>
+                            <span class="category-value">R$ {cat[1]:,.2f}</span>
+                            <span class="category-count">({cat[2]} lançamentos)</span>
+                        </div>
+                    </div>
+                    """ for cat in gastos_categoria])}
+                    ''' if gastos_categoria else '<div class="empty-state">Nenhum gasto registrado</div>'}
+                </div>
+                
+                <div class="panel">
+                    <h3>📈 Evolução Diária</h3>
+                    <div class="timeline">
+                        {f'''
+                        {''.join([f"""
+                        <div class="timeline-item {('receita' if ev[1] > ev[2] else 'gasto')}">
+                            <div class="timeline-date">{datetime.strptime(ev[0], '%Y-%m-%d').strftime('%d/%m/%Y')}</div>
+                            <div class="timeline-values">
+                                <div class="receita">▲ R$ {ev[1]:,.2f}</div>
+                                <div class="gasto">▼ R$ {ev[2]:,.2f}</div>
+                            </div>
+                        </div>
+                        """ for ev in evolucao_diaria[:10]])}
+                        ''' if evolucao_diaria else '<div class="empty-state">Sem dados de evolução</div>'}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: center;">
+            <a href="/" class="back-link">← Voltar para Home</a>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        return html
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no sistema de inspeção: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        return f"""
+        <h1>Erro no Sistema de Inspeção</h1>
+        <p>Ocorreu um erro: {str(e)}</p>
+        <p><a href="/">Voltar</a></p>
+        """, 500
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
