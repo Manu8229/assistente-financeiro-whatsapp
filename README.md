@@ -28,6 +28,16 @@ Desenvolvido seguindo as especificações do `Prompt2.txt` e as diretrizes de co
 - Alertas de limite
 - Projeções baseadas no histórico
 
+### 🔍 **Sistema de Inspeção Visual** 🆕
+- Dashboard interativo com visualização de dados em tempo real
+- Filtros avançados por usuário, data, categoria e tipo
+- Estatísticas gerais: receitas, gastos e saldo líquido
+- Tabela completa de lançamentos com ordenação
+- Gráficos de gastos por categoria
+- Timeline de evolução diária
+- Interface moderna e responsiva
+- Acesso via navegador web em `/inspecao`
+
 ### 🔗 **Integração WhatsApp**
 - Webhook via Twilio
 - Processamento em tempo real
@@ -180,6 +190,25 @@ saldo semanal
 ```http
 GET /status
 ```
+
+### **Sistema de Inspeção Visual** 🆕
+```http
+GET /inspecao
+```
+Dashboard completo para análise e visualização de dados financeiros com:
+- 📊 Estatísticas gerais (receitas, gastos, saldo)
+- 🎯 Filtros avançados (usuário, data, categoria, tipo)
+- 📋 Lista detalhada de lançamentos
+- 🏷️ Gastos por categoria
+- 📈 Evolução diária de receitas e gastos
+- 🎨 Interface moderna e responsiva
+
+**Parâmetros de Query (opcionais):**
+- `usuario`: Filtrar por telefone do usuário
+- `data_inicio`: Data inicial (formato: YYYY-MM-DD)
+- `data_fim`: Data final (formato: YYYY-MM-DD)
+- `categoria`: Filtrar por categoria específica
+- `tipo`: Filtrar por tipo (receita/gasto)
 
 ### **Relatório de Usuário**
 ```http
